@@ -5,20 +5,17 @@ Created on Tue Nov 10 11:55:37 2026
 @author: azz
 """
 
-import yfinance as yf
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Download DRO historical trading data
-df = yf.download(
-    "DRO.AX",
-    period="1y",
-    auto_adjust=False
-)
-df.columns = df.columns.get_level_values(0).str.lower()
-# print(df.head())
 
+DATA_PATH = r"F:\AXS\20261115\\"
+
+prices = pd.read_parquet(DATA_PATH+ "asx_prices.parquet")
+
+df = prices[prices.ticker=='DRO.AX']
 
 def add_macd(df, fast=12, slow=26, signal=9, price_col='close'):
     """
@@ -64,13 +61,13 @@ df = add_macd_signals(df)
 ### Print ###
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7), sharex=True,
                                gridspec_kw={'height_ratios': [3, 1]})
-ax1.plot(df.index, df['close'], label='Close', color='black')
+ax1.plot(df.date, df['close'], label='Close', color='black')
 ax1.legend()
 
-ax2.plot(df.index, df['DIF'], label='DIF', color='blue')
-ax2.plot(df.index, df['DEA'], label='DEA', color='orange')
+ax2.plot(df.date, df['DIF'], label='DIF (MACD)', color='blue')
+ax2.plot(df.date, df['DEA'], label='DEA', color='orange')
 colors = np.where(df['MACD'] >= 0, 'red', 'green')
-ax2.bar(df.index, df['MACD'], color=colors, width=0.7)
+ax2.bar(df.date, df['MACD'], color=colors, width=0.7)
 ax2.axhline(0, color='gray', lw=0.8)
 ax2.legend()
 plt.tight_layout()
