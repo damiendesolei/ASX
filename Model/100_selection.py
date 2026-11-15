@@ -15,7 +15,7 @@ DATA_PATH = r"F:\AXS\20261115\\"
 
 prices = pd.read_parquet(DATA_PATH+ "asx_prices.parquet")
 
-df = prices[prices.ticker=='DRO.AX']
+#df = prices[prices.ticker=='DRO.AX']
 
 def add_macd(df, fast=12, slow=26, signal=9, price_col='close'):
     """
@@ -40,7 +40,7 @@ def add_macd(df, fast=12, slow=26, signal=9, price_col='close'):
     return df
 
 # 假设 df 的索引是 DatetimeIndex，列至少包含 close
-df = add_macd(df)
+# df = add_macd(df)
 
 
 def add_macd_signals(df):
@@ -54,21 +54,47 @@ def add_macd_signals(df):
     df.loc[cross_down, 'signal'] = -1
     return df
 
-df = add_macd_signals(df)
-#print(df[['close', 'DIF', 'DEA', 'MACD']].tail())
 
 
-### Print ###
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7), sharex=True,
-                               gridspec_kw={'height_ratios': [3, 1]})
-ax1.plot(df.date, df['close'], label='Close', color='black')
-ax1.legend()
+last2 = sorted(prices['date'].unique())[-2:]              # last two dates in the data
+plotted = []                                              # tickers that get a chart
 
-ax2.plot(df.date, df['DIF'], label='DIF (MACD)', color='blue')
-ax2.plot(df.date, df['DEA'], label='DEA', color='orange')
-colors = np.where(df['MACD'] >= 0, 'red', 'green')
-ax2.bar(df.date, df['MACD'], color=colors, width=0.7)
-ax2.axhline(0, color='gray', lw=0.8)
-ax2.legend()
-plt.tight_layout()
-plt.show()
+for ticker, df in prices.groupby('ticker'):
+    df = add_macd_signals(df)
+    cross = df.loc[(df['signal'] == 1) & df['date'].isin(last2), 'date']
+    if cross.empty:                                       # no cross up in the last two days
+        continue
+
+    lines = []
+    for n in (90, 30):                                    # 90-day and 30-day regressions
+        reg = df[df['date'] >= df['date'].max() - pd.Timedelta(days=n)]
+        x = (reg['date'] - reg['date'].iloc[0]).dt.days
+        slope, intercept = np.polyfit(x, reg['close'], 1)
+        lines.append((n, reg['date'], intercept + slope * x, slope))
+    if min(l[3] for l in lines) <= 0:                     # both slopes must be positive
+        continue
+    plotted.append(ticker)
+
+    ### Print ###
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7), sharex=True,
+                                   gridspec_kw={'height_ratios': [3, 1]})
+    ax1.set_title(ticker)
+    ax1.plot(df.date, df['close'], label='Close', color='black')
+    for (n, d, y, _), c in zip(lines, ('purple', 'teal')):
+        ax1.plot(d, y, color=c, ls='--', label=f'{n}-day regression')
+    ax1.legend()
+
+    ax2.plot(df.date, df['DIF'], label='DIF (MACD)', color='blue')
+    ax2.plot(df.date, df['DEA'], label='DEA', color='orange')
+    colors = np.where(df['MACD'] >= 0, 'red', 'green')
+    ax2.bar(df.date, df['MACD'], color=colors, width=0.7)
+    ax2.axhline(0, color='gray', lw=0.8)
+    for d in cross:                                       # gold line at the cross up
+        ax1.axvline(d, color='gold', lw=1.5)
+        ax2.axvline(d, color='gold', lw=1.5)
+    ax2.legend()
+    plt.tight_layout()
+    fig.savefig(DATA_PATH + ticker + ".png", dpi=150)     # save the charts
+    plt.show()
+
+pd.Series(plotted, name='ticker').to_csv(DATA_PATH + "macd_cross_up_tickers.csv", index=False)
